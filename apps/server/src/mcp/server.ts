@@ -391,6 +391,16 @@ export function mcpServer(services: Services, identity: Identity): McpServer {
     true,
   );
 
+  tool(
+    "delete_program",
+    "Deletes a programme for everyone, with its module catalogue and handbook. Courses created from modules stay. Only the programme's manager or an admin may; ask the user before.",
+    { program_id: z.string().uuid() },
+    async ({ program_id }) => {
+      await services.programs.remove(user, program_id);
+      return { ok: true };
+    },
+  );
+
   return server;
 }
 

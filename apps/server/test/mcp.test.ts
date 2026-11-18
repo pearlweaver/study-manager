@@ -54,6 +54,23 @@ describe("Claude through MCP", () => {
     expect((await call("list_modules", { program_id: program.id })).data[0]).toMatchObject({ number: "T-1", exam: "mündlich, 30 min" });
   });
 
+  it("deletes a programme with its catalogue, only as its manager", async () => {
+    const alex = await w.user("Alex");
+    const lena = await w.user("Lena");
+    const { call } = await claude(alex);
+    const { data: program } = await call("create_program", { university: "Uni Test", name: "Zu löschen", degree: "B.Sc." });
+    await call("submit_modules", { program_id: program.id, modules: [{ number: "D-1", title: "Weg damit" }] });
+
+    const foreign = await claude(lena);
+    const forbidden = await foreign.call("delete_program", { program_id: program.id });
+    expect(forbidden.error).toBe(true);
+    expect(forbidden.text).toContain("not_manager");
+
+    expect((await call("delete_program", { program_id: program.id })).data).toEqual({ ok: true });
+    expect((await call("list_programs")).data.some((p: { id: string }) => p.id === program.id)).toBe(false);
+    expect((await call("list_modules", { program_id: program.id })).data).toEqual([]);
+  });
+
   it("acts with the user's rights, not more", async () => {
     const alex = await w.user("Alex");
     const lena = await w.user("Lena");

@@ -2,7 +2,7 @@
 // can follow it. Private things (tasks, private notes, learning) are not
 // recorded. Entries are kept for a year.
 import { AsyncLocalStorage } from "node:async_hooks";
-import { and, desc, eq, gt, inArray, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.ts";
 import { activity, courses, profiles } from "../db/schema.ts";
 import { requireRole } from "./access.ts";
@@ -133,14 +133,21 @@ export interface ActivityView {
 }
 
 export function activityOf(db: Db) {
-  const select = (where: ReturnType<typeof and>, limit: number, before?: string) =>
-    db
+  const select = async (where: ReturnType<typeof and>, limit: number, beforeId?: string) => {
+    const cursor = beforeId ? await db.query.activity.findFirst({ where: eq(activity.id, beforeId), columns: { at: true, id: true } }) : null;
+    // Several entries can share one millisecond, so the id breaks the tie.
+    const older = beforeId
+      ? cursor
+        ? or(lt(activity.at, cursor.at), and(eq(activity.at, cursor.at), lt(activity.id, cursor.id)))
+        : sql`false`
+      : undefined;
+    return db
       .select({ row: activity, actorName: profiles.displayName, avatar: profiles.avatarPath, courseTitle: courses.title })
       .from(activity)
       .leftJoin(profiles, eq(profiles.id, activity.actorId))
       .leftJoin(courses, eq(courses.id, activity.courseId))
-      .where(and(where, before ? lt(activity.at, new Date(before)) : undefined))
-      .orderBy(desc(activity.at))
+      .where(and(where, older))
+      .orderBy(desc(activity.at), desc(activity.id))
       .limit(Math.min(limit, 200))
       .then((rows) =>
         rows.map(
@@ -161,6 +168,7 @@ export function activityOf(db: Db) {
           }),
         ),
       );
+  };
 
   return {
     /** What happened in a subject, newest first; for its members. */

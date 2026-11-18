@@ -123,7 +123,7 @@ export function ActivityFeed({
             loading={busy}
             onClick={async () => {
               setBusy(true);
-              const older = await load(entries[entries.length - 1]!.at);
+              const older = await load(entries[entries.length - 1]!.id);
               setEntries([...entries, ...older]);
               setMore(older.length >= 50);
               setBusy(false);

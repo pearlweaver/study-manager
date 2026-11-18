@@ -119,7 +119,7 @@ export function mcpServer(services: Services, identity: Identity): McpServer {
   tool(
     "course_activity",
     "What was changed in a course lately and by whom (files, deadlines, flashcards, notes, members). via=claude means: through Claude.",
-    { course_id: z.string().uuid(), before: z.string().datetime().optional().describe("For older entries: the time of the oldest one seen so far") },
+    { course_id: z.string().uuid(), before: z.string().uuid().optional().describe("For older entries: the id of the oldest one seen so far") },
     ({ course_id, before }) => services.activity.ofCourse(user, course_id, { before, limit: 50 }),
     true,
   );

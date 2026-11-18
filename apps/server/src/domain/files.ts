@@ -63,6 +63,24 @@ export function filesOf(db: Db, filesDir: string) {
     }
   };
 
+  /** Claim a path in the database before any bytes are moved there. */
+  const reserve = async (courseId: string, folder: FileFolder, name: string, upload: Upload, userId: string) => {
+    for (;;) {
+      const free = await freePath(courseId, folder, name);
+      try {
+        const [row] = await db
+          .insert(files)
+          .values({ courseId, folder, name: free.name, path: free.path, size: upload.size, mime: upload.mime, sha256: upload.sha256, uploadedBy: userId })
+          .returning();
+        return { ...free, row: row! };
+      } catch (error) {
+        // Someone else claimed that path between the check and the insert.
+        const code = (error as { code?: string }).code ?? (error as { cause?: { code?: string } }).cause?.code;
+        if (code !== "23505") throw error;
+      }
+    }
+  };
+
   const view = (row: typeof files.$inferSelect, uploader?: string | null, deleter?: string | null): FileView => ({
     id: row.id,
     courseId: row.courseId,
@@ -110,15 +128,16 @@ export function filesOf(db: Db, filesDir: string) {
         await rm(upload.tempPath, { force: true });
         throw new AppError(413, "quota_exceeded");
       }
-      const { path, name } = await freePath(courseId, folder as FileFolder, cleanName(upload.name));
+      const { path, name, row } = await reserve(courseId, folder as FileFolder, cleanName(upload.name), upload, userId);
       await mkdir(dirname(absolute(path)), { recursive: true });
-      await rename(upload.tempPath, absolute(path));
-      const [row] = await db
-        .insert(files)
-        .values({ courseId, folder: folder as FileFolder, name, path, size: upload.size, mime: upload.mime, sha256: upload.sha256, uploadedBy: userId })
-        .returning();
-      await record(db, { courseId, actorId: userId, action: "file.uploaded", subjectId: row!.id, subject: name, details: { folder, size: upload.size } });
-      return view(row!, profile?.displayName);
+      try {
+        await rename(upload.tempPath, absolute(path));
+      } catch (error) {
+        await db.delete(files).where(eq(files.id, row.id));
+        throw error;
+      }
+      await record(db, { courseId, actorId: userId, action: "file.uploaded", subjectId: row.id, subject: name, details: { folder, size: upload.size } });
+      return view(row, profile?.displayName);
     },
 
     /** The file on disk, for reading; only live files of subjects the user is in. */

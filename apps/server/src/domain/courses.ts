@@ -61,12 +61,15 @@ export function coursesOf(db: Db) {
     return rows;
   };
 
-  const ownerCount = async (courseId: string) =>
-    db
+  const ownerCount = async (courseId: string, tx: Pick<Db, "select"> = db) =>
+    tx
       .select({ n: sql<number>`count(*)::int` })
       .from(courseMembers)
       .where(and(eq(courseMembers.courseId, courseId), eq(courseMembers.role, "owner")))
       .then((rows) => rows[0]?.n ?? 0);
+
+  /** Hold the memberships steady while checking whether this is the last owner. */
+  const lockMembers = (tx: Pick<Db, "execute">, courseId: string) => tx.execute(sql`select 1 from course_members where course_id = ${courseId} for update`);
 
   const nameOf = async (userId: string) =>
     (await db.query.profiles.findFirst({ where: eq(profiles.id, userId) }))?.displayName ?? "";
@@ -163,19 +166,23 @@ export function coursesOf(db: Db) {
 
     async setRole(userId: string, courseId: string, memberId: string, role: CourseRole) {
       await requireRole(db, userId, courseId, "owner");
-      const member = await db.query.courseMembers.findFirst({
-        where: and(eq(courseMembers.courseId, courseId), eq(courseMembers.userId, memberId)),
+      const previous = await db.transaction(async (tx) => {
+        await lockMembers(tx, courseId);
+        const member = await tx.query.courseMembers.findFirst({
+          where: and(eq(courseMembers.courseId, courseId), eq(courseMembers.userId, memberId)),
+        });
+        if (!member) throw notFound("unknown_member");
+        if (member.role === "owner" && role !== "owner" && (await ownerCount(courseId, tx)) <= 1) {
+          throw invalid("last_owner");
+        }
+        await tx
+          .update(courseMembers)
+          .set({ role })
+          .where(and(eq(courseMembers.courseId, courseId), eq(courseMembers.userId, memberId)));
+        return member.role;
       });
-      if (!member) throw notFound("unknown_member");
-      if (member.role === "owner" && role !== "owner" && (await ownerCount(courseId)) <= 1) {
-        throw invalid("last_owner");
-      }
-      await db
-        .update(courseMembers)
-        .set({ role })
-        .where(and(eq(courseMembers.courseId, courseId), eq(courseMembers.userId, memberId)));
-      if (member.role !== role) {
-        await record(db, { courseId, actorId: userId, action: "member.role", subjectId: memberId, subject: await nameOf(memberId), details: { role: [member.role, role] } });
+      if (previous !== role) {
+        await record(db, { courseId, actorId: userId, action: "member.role", subjectId: memberId, subject: await nameOf(memberId), details: { role: [previous, role] } });
       }
     },
 
@@ -183,12 +190,15 @@ export function coursesOf(db: Db) {
     async removeMember(userId: string, courseId: string, memberId: string) {
       if (memberId === userId) await requireRole(db, userId, courseId, "viewer");
       else await requireRole(db, userId, courseId, "owner");
-      const member = await db.query.courseMembers.findFirst({
-        where: and(eq(courseMembers.courseId, courseId), eq(courseMembers.userId, memberId)),
+      await db.transaction(async (tx) => {
+        await lockMembers(tx, courseId);
+        const member = await tx.query.courseMembers.findFirst({
+          where: and(eq(courseMembers.courseId, courseId), eq(courseMembers.userId, memberId)),
+        });
+        if (!member) throw notFound("unknown_member");
+        if (member.role === "owner" && (await ownerCount(courseId, tx)) <= 1) throw invalid("last_owner");
+        await tx.delete(courseMembers).where(and(eq(courseMembers.courseId, courseId), eq(courseMembers.userId, memberId)));
       });
-      if (!member) throw notFound("unknown_member");
-      if (member.role === "owner" && (await ownerCount(courseId)) <= 1) throw invalid("last_owner");
-      await db.delete(courseMembers).where(and(eq(courseMembers.courseId, courseId), eq(courseMembers.userId, memberId)));
       await record(db, {
         courseId,
         actorId: userId,

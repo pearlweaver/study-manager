@@ -85,7 +85,7 @@ export async function buildApp(services: Services, extras: AppExtras = {}) {
     timeWindow: "1 minute",
     keyGenerator: (request) => {
       const path = request.url;
-      const kind = path.startsWith("/mcp") ? "mcp" : request.method !== "GET" && /\/(files|avatar|handbook)\b/.test(path) ? "upload" : "api";
+      const kind = path.startsWith("/mcp") ? "mcp" : path.startsWith("/ical/") ? "calendar" : request.method !== "GET" && /\/(files|avatar|handbook)\b/.test(path) ? "upload" : "api";
       return `${kind}:${limitKey(request)}`;
     },
     allowList: (request) => request.url === "/api/health",

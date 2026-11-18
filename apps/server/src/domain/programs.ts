@@ -1,6 +1,6 @@
 // Degree programmes and their module catalogues, shared by everyone who
 // studies them. Whoever imports a handbook manages the catalogue.
-import { mkdir, rename } from "node:fs/promises";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { and, eq, ilike, or, sql } from "drizzle-orm";
 import { MODULE_BATCH, moduleSchema, programDraftSchema, type ModuleData, type ProgramDraft } from "@study/shared";
@@ -93,6 +93,7 @@ export function programsOf(db: Db, filesDir: string) {
     async remove(userId: string, programId: string) {
       const program = await mayManage(userId, programId);
       await db.delete(programs).where(eq(programs.id, programId));
+      if (program.handbookPath) await rm(join(filesDir, program.handbookPath), { force: true });
       await record(db, { actorId: userId, action: "program.deleted", subjectId: programId, subject: `${program.university} · ${program.name}` });
     },
 

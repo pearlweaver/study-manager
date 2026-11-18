@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link, Route, Routes, useNavigate, useParams } from "react-router";
 import type { ModuleData, ProgramDraft } from "@study/shared";
 import { Breadcrumb, Button, Card, Chip, EmptyState, List, ListRow, Notice, pickFiles, SearchField, SectionHeader, TextField } from "@study/ui";
-import { Dialog } from "../components/Dialog";
+import { ConfirmDialog, Dialog } from "../components/Dialog";
 import { NewCourseDialog } from "../components/NewCourseDialog";
 import { t, errorMessage } from "../i18n";
 import { api, type Module, type Program } from "../lib/api";
@@ -153,6 +153,7 @@ function ProgramDetail() {
   const [open, setOpen] = useState<string | null>(null);
   const [making, setMaking] = useState<Module | null>(null);
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -184,6 +185,11 @@ function ProgramDetail() {
             {manages && (
               <Button icon="edit" onClick={() => setEditing(true)}>
                 {t.common.edit}
+              </Button>
+            )}
+            {manages && (
+              <Button variant="danger" icon="trash" onClick={() => setDeleting(true)}>
+                {t.programs.deleteProgram}
               </Button>
             )}
             <Button variant={program.enrolled ? "secondary" : "primary"} icon={program.enrolled ? "close" : "check"} onClick={() => api.setEnrolled(program.id, !program.enrolled).then(load)}>
@@ -305,6 +311,19 @@ function ProgramDetail() {
           onSaved={async () => {
             setEditing(false);
             await load();
+          }}
+        />
+      )}
+      {deleting && (
+        <ConfirmDialog
+          title={t.programs.deleteProgram}
+          text={t.programs.deleteConfirm(program.name)}
+          confirm={t.common.delete}
+          danger
+          onClose={() => setDeleting(false)}
+          onConfirm={async () => {
+            await api.deleteProgram(program.id);
+            navigate(PROGRAMS);
           }}
         />
       )}

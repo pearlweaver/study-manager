@@ -524,6 +524,8 @@ export const de: Messages = {
     search: "Module durchsuchen",
     createSubject: "Als Fach anlegen",
     deleteModule: "Modul löschen",
+    deleteProgram: "Studiengang löschen",
+    deleteConfirm: (name: string) => `„${name}“ wird für alle gelöscht, mit dem gesamten Modulkatalog. Aus Modulen angelegte Fächer bleiben.`,
     credits: (n: number | null) => (n == null ? "" : `${String(n).replace(".", ",")} LP`),
     fields: {
       language: "Sprache",

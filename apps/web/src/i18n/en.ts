@@ -524,6 +524,8 @@ export const en = {
     search: "Search modules",
     createSubject: "Create as course",
     deleteModule: "Delete module",
+    deleteProgram: "Delete programme",
+    deleteConfirm: (name: string) => `“${name}” is deleted for everyone, together with its module catalogue. Courses created from modules stay.`,
     credits: (n: number | null) => (n == null ? "" : `${n} credits`),
     fields: {
       language: "Language",

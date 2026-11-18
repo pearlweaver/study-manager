@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { world } from "./support.ts";
 
@@ -157,6 +159,28 @@ describe("module catalogues", () => {
     await expect(
       w.services.programs.upsertModules(alex, programId, Array.from({ length: 21 }, (_, i) => ({ number: `X${i}`, title: "x" }))),
     ).rejects.toMatchObject({ code: "too_many_modules" });
+  });
+});
+
+describe("a programme", () => {
+  it("is deleted by its manager with catalogue, enrolment and handbook; created courses stay", async () => {
+    const alex = await w.user("Alex");
+    const lena = await w.user("Lena");
+    const programId = await w.services.programs.create(alex, { university: "KIT", name: "Informatik", degree: "B.Sc.", regulation: "" });
+    await w.services.programs.upsertModules(alex, programId, [{ number: "M-1", title: "Grundbegriffe der Informatik" }]);
+    await w.services.programs.setEnrolled(lena, programId, true);
+    const [module] = await w.services.programs.modules(programId);
+    const course = await w.services.courses.create(alex, { title: "", semester: "WiSe26-27", moduleId: module!.id });
+    await w.services.programs.setHandbook(alex, programId, (await w.upload("handbook.pdf", "%PDF")).tempPath);
+    const handbook = join(w.filesDir, "handbooks", `${programId}.pdf`);
+
+    await expect(w.services.programs.remove(lena, programId)).rejects.toMatchObject({ code: "not_manager" });
+    await w.services.programs.remove(alex, programId);
+
+    expect((await w.services.programs.list(alex)).some((p) => p.id === programId)).toBe(false);
+    expect(await w.services.programs.modules(programId)).toEqual([]);
+    expect((await w.services.courses.get(alex, course.id)).title).toBe("Grundbegriffe der Informatik");
+    await expect(readFile(handbook)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });
 

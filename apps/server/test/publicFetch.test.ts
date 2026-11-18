@@ -12,6 +12,18 @@ describe("links the server fetches for users", () => {
     for (const ip of ["1.1.1.1", "141.58.1.1", "2606:4700::1111", "172.32.0.1"]) expect(isPrivateAddress(ip)).toBe(false);
   });
 
+  it("rejects IPv6 literals that hide a private address", async () => {
+    const dns = resolver({});
+    for (const link of ["https://[::ffff:127.0.0.1]/", "https://[::ffff:169.254.169.254]/", "https://[::127.0.0.1]/"]) {
+      await expect(publicUrl(link, dns), link).rejects.toBeInstanceOf(LinkNotAllowed);
+    }
+  });
+
+  it("still accepts public IPv6 literal links", async () => {
+    const dns = resolver({});
+    await expect(publicUrl("https://[2606:4700::1111]/cal.ics", dns), "public IPv6").resolves.toBeInstanceOf(URL);
+  });
+
   it("accepts https links to public addresses only", async () => {
     const dns = resolver({ "campus.example.org": ["141.58.1.1"], "router.example.org": ["192.168.1.1"], "auth": ["172.18.0.3"], "mixed.example.org": ["141.58.1.1", "10.0.0.1"] });
     await expect(publicUrl("https://campus.example.org/cal.ics", dns)).resolves.toBeInstanceOf(URL);

@@ -10,8 +10,16 @@ export class LinkNotAllowed extends Error {}
 
 /** Whether an address belongs to a private, local or otherwise special network. */
 export function isPrivateAddress(address: string): boolean {
-  const mapped = address.toLowerCase().match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  const lower = address.toLowerCase();
+  const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
   if (mapped) return isPrivateAddress(mapped[1]!);
+  // A URL (or DNS) spells IPv4-mapped and IPv4-compatible IPv6 in hex, e.g. ::ffff:7f00:1.
+  const hidden = lower.match(/^::(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hidden) {
+    const a = parseInt(hidden[1]!, 16);
+    const b = parseInt(hidden[2]!, 16);
+    return isPrivateAddress(`${a >> 8}.${a & 255}.${b >> 8}.${b & 255}`);
+  }
   if (isIP(address) === 4) {
     const [a, b] = address.split(".").map(Number) as [number, number];
     return (
@@ -27,8 +35,7 @@ export function isPrivateAddress(address: string): boolean {
       a >= 224
     );
   }
-  const v6 = address.toLowerCase();
-  return v6 === "::" || v6 === "::1" || /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6) || /^ff/.test(v6);
+  return lower === "::" || lower === "::1" || /^f[cd]/.test(lower) || /^fe[89ab]/.test(lower) || /^ff/.test(lower);
 }
 
 /** The link as a URL, if it is https and every address its name stands for is public. */

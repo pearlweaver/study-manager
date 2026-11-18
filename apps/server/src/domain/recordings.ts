@@ -16,7 +16,7 @@ export const PART = 40_000;
 
 export const recordingDraftSchema = z.object({
   title: z.string().trim().min(1).max(200),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  date: z.iso.date(),
   language: z.string().max(10).nullable().optional(),
   durationSeconds: z.number().int().nonnegative().nullable().optional(),
   transcript: z.string().min(1).max(3_000_000),
@@ -108,11 +108,12 @@ export function recordingsOf(db: Db, notes: ReturnType<typeof notesOf>) {
     async rename(userId: string, recordingId: string, change: { title?: string; date?: string }) {
       const row = await find(recordingId);
       await requireRole(db, userId, row.courseId, "editor");
+      const date = change.date === undefined ? undefined : recordingDraftSchema.shape.date.parse(change.date);
       await db
         .update(recordings)
-        .set({ ...(change.title?.trim() && { title: change.title.trim() }), ...(change.date && { date: change.date }) })
+        .set({ ...(change.title?.trim() && { title: change.title.trim() }), ...(date && { date }) })
         .where(eq(recordings.id, recordingId));
-      const diff = changes(row, { title: change.title?.trim() || undefined, date: change.date });
+      const diff = changes(row, { title: change.title?.trim() || undefined, date });
       if (Object.keys(diff).length > 0) {
         await record(db, { courseId: row.courseId, actorId: userId, action: "recording.changed", subjectId: row.id, subject: change.title?.trim() || row.title, details: diff });
       }

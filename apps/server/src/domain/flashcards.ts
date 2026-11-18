@@ -202,27 +202,32 @@ export function flashcardsOf(db: Db) {
       const card = await db.query.cards.findFirst({ where: eq(cards.id, cardId) });
       if (!card) throw notFound("unknown_card");
       await requireRole(db, userId, (await deckOf(card.deckId)).courseId, "viewer");
-      const known = await db.query.cardStates.findFirst({ where: and(eq(cardStates.cardId, cardId), eq(cardStates.userId, userId)) });
-      const before = known ? stateOf(known) : createEmptyCard(now);
-      const next = scheduler.next(before, now, rating as Grade).card;
-      const values = {
-        due: next.due,
-        stability: next.stability,
-        difficulty: next.difficulty,
-        elapsedDays: 0,
-        scheduledDays: next.scheduled_days,
-        learningSteps: next.learning_steps,
-        reps: next.reps,
-        lapses: next.lapses,
-        state: next.state,
-        lastReview: now,
-      };
-      await db
-        .insert(cardStates)
-        .values({ cardId, userId, ...values })
-        .onConflictDoUpdate({ target: [cardStates.cardId, cardStates.userId], set: values });
-      await db.insert(reviews).values({ cardId, userId, rating, reviewedAt: now });
-      return { due: next.due.toISOString(), state: next.state };
+      return db.transaction(async (tx) => {
+        // Serialize answers to the same card, including the first one, where a
+        // row lock would have no row to hold. Both writes commit together.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${cardId + userId}))`);
+        const known = await tx.query.cardStates.findFirst({ where: and(eq(cardStates.cardId, cardId), eq(cardStates.userId, userId)) });
+        const before = known ? stateOf(known) : createEmptyCard(now);
+        const next = scheduler.next(before, now, rating as Grade).card;
+        const values = {
+          due: next.due,
+          stability: next.stability,
+          difficulty: next.difficulty,
+          elapsedDays: 0,
+          scheduledDays: next.scheduled_days,
+          learningSteps: next.learning_steps,
+          reps: next.reps,
+          lapses: next.lapses,
+          state: next.state,
+          lastReview: now,
+        };
+        await tx
+          .insert(cardStates)
+          .values({ cardId, userId, ...values })
+          .onConflictDoUpdate({ target: [cardStates.cardId, cardStates.userId], set: values });
+        await tx.insert(reviews).values({ cardId, userId, rating, reviewedAt: now });
+        return { due: next.due.toISOString(), state: next.state };
+      });
     },
 
     /** What a member's due cards look like across all their subjects, for the home page. */

@@ -39,7 +39,7 @@ interface Claims {
   sub?: string;
   email?: string;
   aal?: string;
-  amr?: { method: string; timestamp?: number }[];
+  amr?: ({ method: string; timestamp?: number } | string)[];
   client_id?: string;
   session_id?: string;
 }
@@ -67,13 +67,16 @@ export function tokenAuthenticator(options: {
           const live = await options.db.execute(sql`select 1 from auth.sessions where id = ${payload.session_id}::uuid`);
           if (live.length === 0) return null;
         }
+        // Supabase may send amr as RFC 8176 strings or as objects with a timestamp.
+        const amr = (payload.amr ?? []).map((entry) => (typeof entry === "string" ? { method: entry } : entry));
+        const timestamps = amr.map((entry) => entry.timestamp).filter((time): time is number => typeof time === "number");
         return {
           userId: payload.sub,
           email: payload.email?.toLowerCase() ?? profile.email,
-          methods: (payload.amr ?? []).map((entry) => entry.method),
+          methods: amr.map((entry) => entry.method),
           aal: payload.aal ?? "aal1",
           via: payload.client_id ? "oauth" : "session",
-          authenticatedAt: payload.amr?.length ? new Date(Math.max(...payload.amr.map((entry) => entry.timestamp ?? 0)) * 1000) : null,
+          authenticatedAt: timestamps.length > 0 ? new Date(Math.max(...timestamps) * 1000) : null,
         };
       } catch {
         return null;

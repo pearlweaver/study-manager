@@ -13,11 +13,11 @@ export const programRoutes =
     app.get("/api/programs", async (request) => p.list(who(request).userId));
     app.post("/api/programs", async (request) => ({ id: await p.create(who(request).userId, request.body as never) }));
     app.put<{ Params: { id: string } }>("/api/programs/:id", async (request) => {
-      await p.update(who(request).userId, request.params.id, request.body as never);
+      await p.update(who(request), request.params.id, request.body as never);
       return { ok: true };
     });
     app.delete<{ Params: { id: string } }>("/api/programs/:id", async (request) => {
-      await p.remove(who(request).userId, request.params.id);
+      await p.remove(who(request), request.params.id);
       return { ok: true };
     });
     app.post<{ Params: { id: string } }>("/api/programs/:id/enrollment", async (request) => {
@@ -34,7 +34,7 @@ export const programRoutes =
       return p.module(request.params.id);
     });
     app.delete<{ Params: { id: string } }>("/api/modules/:id", async (request) => {
-      await p.removeModule(who(request).userId, request.params.id);
+      await p.removeModule(who(request), request.params.id);
       return { ok: true };
     });
     app.post<{ Params: { id: string } }>("/api/programs/:id/handbook", async (request) => {
@@ -44,7 +44,7 @@ export const programRoutes =
         const upload = uploads[0];
         if (!upload) throw new AppError(400, "no_file");
         if (!/\.pdf$/i.test(upload.name)) throw new AppError(400, "handbook_not_pdf");
-        await p.setHandbook(identity.userId, request.params.id, upload.tempPath);
+        await p.setHandbook(identity, request.params.id, upload.tempPath);
         return { ok: true };
       } finally {
         await removeUploads(uploads);

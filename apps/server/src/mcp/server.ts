@@ -380,7 +380,7 @@ export function mcpServer(services: Services, identity: Identity): McpServer {
     "submit_modules",
     `Submits modules for the catalogue (at most ${MODULE_BATCH} per call); existing ones with the same number are replaced. Only the programme's manager may.`,
     { program_id: z.string().uuid(), modules: z.array(moduleSchema).max(MODULE_BATCH) },
-    ({ program_id, modules }) => services.programs.upsertModules(user, program_id, modules),
+    ({ program_id, modules }) => services.programs.upsertModules(identity, program_id, modules),
   );
 
   tool(
@@ -396,7 +396,7 @@ export function mcpServer(services: Services, identity: Identity): McpServer {
     "Deletes a programme for everyone, with its module catalogue and handbook. Courses created from modules stay. Only the programme's manager or an admin may; ask the user before.",
     { program_id: z.string().uuid() },
     async ({ program_id }) => {
-      await services.programs.remove(user, program_id);
+      await services.programs.remove(identity, program_id);
       return { ok: true };
     },
   );

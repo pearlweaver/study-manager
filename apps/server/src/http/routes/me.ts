@@ -98,7 +98,7 @@ export const meRoutes =
       return reply.type(avatar.mime).send(createReadStream(avatar.path));
     });
 
-    app.get("/api/people", async (request) => services.users.people(who(request).userId));
+    app.get("/api/people", async (request) => services.users.people(who(request)));
 
     app.get("/api/me/deletion", async (request) => services.users.deletionCheck(who(request).userId));
 

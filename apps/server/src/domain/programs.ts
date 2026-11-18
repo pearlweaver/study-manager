@@ -4,6 +4,7 @@ import { mkdir, rename, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { and, eq, ilike, or, sql } from "drizzle-orm";
 import { MODULE_BATCH, moduleSchema, programDraftSchema, type ModuleData, type ProgramDraft } from "@study/shared";
+import { strongEnoughForAdmin, type Identity } from "../auth/identity.ts";
 import type { Db } from "../db/client.ts";
 import { enrollments, modules, profiles, programs } from "../db/schema.ts";
 import { pdfText } from "../text/pdf.ts";
@@ -30,10 +31,13 @@ export interface ModuleView extends ModuleData {
 }
 
 export function programsOf(db: Db, filesDir: string) {
-  const mayManage = async (userId: string, programId: string) => {
+  const mayManage = async (identity: Identity, programId: string) => {
     const program = await db.query.programs.findFirst({ where: eq(programs.id, programId) });
     if (!program) throw notFound("unknown_program");
-    if (program.managerId !== userId && !(await isAdmin(db, userId))) throw forbidden("not_manager");
+    // An admin override still needs the same second factor as the admin routes.
+    if (program.managerId !== identity.userId && !(strongEnoughForAdmin(identity) && (await isAdmin(db, identity.userId)))) {
+      throw forbidden("not_manager");
+    }
     return program;
   };
 
@@ -80,21 +84,21 @@ export function programsOf(db: Db, filesDir: string) {
       return program!.id;
     },
 
-    async update(userId: string, programId: string, draft: ProgramDraft) {
-      const before = await mayManage(userId, programId);
+    async update(identity: Identity, programId: string, draft: ProgramDraft) {
+      const before = await mayManage(identity, programId);
       const next = programDraftSchema.parse(draft);
       await db.update(programs).set(next).where(eq(programs.id, programId));
       const diff = changes(before, next);
       if (Object.keys(diff).length > 0) {
-        await record(db, { actorId: userId, action: "program.changed", subjectId: programId, subject: `${next.university} · ${next.name}`, details: diff });
+        await record(db, { actorId: identity.userId, action: "program.changed", subjectId: programId, subject: `${next.university} · ${next.name}`, details: diff });
       }
     },
 
-    async remove(userId: string, programId: string) {
-      const program = await mayManage(userId, programId);
+    async remove(identity: Identity, programId: string) {
+      const program = await mayManage(identity, programId);
       await db.delete(programs).where(eq(programs.id, programId));
       if (program.handbookPath) await rm(join(filesDir, program.handbookPath), { force: true });
-      await record(db, { actorId: userId, action: "program.deleted", subjectId: programId, subject: `${program.university} · ${program.name}` });
+      await record(db, { actorId: identity.userId, action: "program.deleted", subjectId: programId, subject: `${program.university} · ${program.name}` });
     },
 
     async setEnrolled(userId: string, programId: string, enrolled: boolean) {
@@ -128,8 +132,8 @@ export function programsOf(db: Db, filesDir: string) {
      * batches; each module is checked on its own and the ones that do not
      * fit are reported back rather than failing the batch.
      */
-    async upsertModules(userId: string, programId: string, input: unknown[]) {
-      const program = await mayManage(userId, programId);
+    async upsertModules(identity: Identity, programId: string, input: unknown[]) {
+      const program = await mayManage(identity, programId);
       if (input.length > MODULE_BATCH) throw invalid("too_many_modules", `At most ${MODULE_BATCH} modules per call.`);
       const saved: string[] = [];
       const rejected: { index: number; problem: string }[] = [];
@@ -150,21 +154,21 @@ export function programsOf(db: Db, filesDir: string) {
         saved.push(number);
       }
       if (saved.length > 0) {
-        await record(db, { actorId: userId, action: "modules.changed", subjectId: programId, subject: `${program.university} · ${program.name}`, details: { saved } });
+        await record(db, { actorId: identity.userId, action: "modules.changed", subjectId: programId, subject: `${program.university} · ${program.name}`, details: { saved } });
       }
       return { saved, rejected };
     },
 
-    async removeModule(userId: string, moduleId: string) {
+    async removeModule(identity: Identity, moduleId: string) {
       const module = await this.module(moduleId);
-      const program = await mayManage(userId, module.programId);
+      const program = await mayManage(identity, module.programId);
       await db.delete(modules).where(eq(modules.id, moduleId));
-      await record(db, { actorId: userId, action: "modules.changed", subjectId: program.id, subject: `${program.university} · ${program.name}`, details: { removed: [module.number] } });
+      await record(db, { actorId: identity.userId, action: "modules.changed", subjectId: program.id, subject: `${program.university} · ${program.name}`, details: { removed: [module.number] } });
     },
 
     /** Keeps the uploaded handbook PDF with its programme. */
-    async setHandbook(userId: string, programId: string, uploaded: string) {
-      await mayManage(userId, programId);
+    async setHandbook(identity: Identity, programId: string, uploaded: string) {
+      await mayManage(identity, programId);
       const relative = join("handbooks", `${programId}.pdf`);
       const target = join(filesDir, relative);
       await mkdir(dirname(target), { recursive: true });

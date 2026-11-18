@@ -39,7 +39,7 @@ describe("Claude through MCP", () => {
     const { data: program } = await call("create_program", { university: "Uni Test", name: "Testing", degree: "M.Sc." });
     const pdf = join(w.filesDir, "upload.pdf");
     await copyFile(fileURLToPath(new URL("./fixtures/handbook.pdf", import.meta.url)), pdf);
-    await w.services.programs.setHandbook(alex, program.id, pdf);
+    await w.services.programs.setHandbook(w.identity(alex), program.id, pdf);
 
     const page = await call("read_handbook", { program_id: program.id, from_page: 1 });
     expect(page.error).toBe(false);

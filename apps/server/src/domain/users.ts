@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { and, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { LOCALES, type Locale } from "@study/shared";
 import type { Accounts } from "../auth/accounts.ts";
+import { strongEnoughForAdmin, type Identity } from "../auth/identity.ts";
 import type { Db } from "../db/client.ts";
 import { courseMembers, courses, files, profiles } from "../db/schema.ts";
 import { changes, record } from "./activity.ts";
@@ -274,16 +275,17 @@ export function users(db: Db, accounts: Accounts, filesDir: string) {
      * The people the user meets in the app: themselves and everyone sharing a
      * subject with them. Admins see everyone.
      */
-    async people(userId: string) {
-      const me = await find(userId);
+    async people(identity: Identity) {
+      const me = await find(identity.userId);
       const shared = db
         .select({ id: courseMembers.userId })
         .from(courseMembers)
-        .where(inArray(courseMembers.courseId, db.select({ id: courseMembers.courseId }).from(courseMembers).where(eq(courseMembers.userId, userId))));
+        .where(inArray(courseMembers.courseId, db.select({ id: courseMembers.courseId }).from(courseMembers).where(eq(courseMembers.userId, identity.userId))));
+      const fullAdmin = me.isAdmin && strongEnoughForAdmin(identity);
       return db
         .select({ id: profiles.id, displayName: profiles.displayName, avatarVersion: profiles.avatarVersion, hasAvatar: sql<boolean>`${profiles.avatarPath} is not null` })
         .from(profiles)
-        .where(me.isAdmin ? undefined : or(eq(profiles.id, userId), inArray(profiles.id, shared)))
+        .where(fullAdmin ? undefined : or(eq(profiles.id, identity.userId), inArray(profiles.id, shared)))
         .orderBy(profiles.displayName);
     },
 

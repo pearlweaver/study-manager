@@ -115,7 +115,7 @@ describe("a shared subject", () => {
     const alex = await w.user("Alex");
     const lena = await w.user("Lena");
     const programId = await w.services.programs.create(alex, { university: "Beispieluniversität", name: "Technische Systeme", degree: "M.Sc.", regulation: "" });
-    await w.services.programs.upsertModules(alex, programId, [{ number: "21730", title: "Automatisierungstechnik II", credits: 6 }]);
+    await w.services.programs.upsertModules(w.identity(alex), programId, [{ number: "21730", title: "Automatisierungstechnik II", credits: 6 }]);
     const [module] = await w.services.programs.modules(programId);
     const course = await w.services.courses.create(alex, { title: "", semester: "WiSe26-27", moduleId: module!.id });
     expect([course.title, course.number, course.credits]).toEqual(["Automatisierungstechnik II", "21730", 6]);
@@ -143,7 +143,7 @@ describe("module catalogues", () => {
     const lena = await w.user("Lena");
     const programId = await w.services.programs.create(alex, { university: "KIT", name: "Informatik", degree: "B.Sc.", regulation: "SPO 2015" });
 
-    const result = await w.services.programs.upsertModules(alex, programId, [
+    const result = await w.services.programs.upsertModules(w.identity(alex), programId, [
       { number: "M-1", title: "Grundbegriffe der Informatik", credits: 6, exam: "Klausur 120 min" },
       { number: "", title: "ohne Nummer" },
       { number: "M-2", title: "Lineare Algebra", credits: 9 },
@@ -152,12 +152,12 @@ describe("module catalogues", () => {
     expect(result.rejected.map((r) => r.index)).toEqual([1]);
 
     // A second import replaces modules with the same number.
-    await w.services.programs.upsertModules(alex, programId, [{ number: "M-1", title: "Grundbegriffe der Informatik", credits: 4 }]);
+    await w.services.programs.upsertModules(w.identity(alex), programId, [{ number: "M-1", title: "Grundbegriffe der Informatik", credits: 4 }]);
     expect((await w.services.programs.modules(programId, "grund")).map((m) => [m.number, m.credits, m.exam ?? null])).toEqual([["M-1", 4, null]]);
 
-    await expect(w.services.programs.upsertModules(lena, programId, [{ number: "M-3", title: "x" }])).rejects.toMatchObject({ code: "not_manager" });
+    await expect(w.services.programs.upsertModules(w.identity(lena), programId, [{ number: "M-3", title: "x" }])).rejects.toMatchObject({ code: "not_manager" });
     await expect(
-      w.services.programs.upsertModules(alex, programId, Array.from({ length: 21 }, (_, i) => ({ number: `X${i}`, title: "x" }))),
+      w.services.programs.upsertModules(w.identity(alex), programId, Array.from({ length: 21 }, (_, i) => ({ number: `X${i}`, title: "x" }))),
     ).rejects.toMatchObject({ code: "too_many_modules" });
   });
 });
@@ -167,15 +167,15 @@ describe("a programme", () => {
     const alex = await w.user("Alex");
     const lena = await w.user("Lena");
     const programId = await w.services.programs.create(alex, { university: "KIT", name: "Informatik", degree: "B.Sc.", regulation: "" });
-    await w.services.programs.upsertModules(alex, programId, [{ number: "M-1", title: "Grundbegriffe der Informatik" }]);
+    await w.services.programs.upsertModules(w.identity(alex), programId, [{ number: "M-1", title: "Grundbegriffe der Informatik" }]);
     await w.services.programs.setEnrolled(lena, programId, true);
     const [module] = await w.services.programs.modules(programId);
     const course = await w.services.courses.create(alex, { title: "", semester: "WiSe26-27", moduleId: module!.id });
-    await w.services.programs.setHandbook(alex, programId, (await w.upload("handbook.pdf", "%PDF")).tempPath);
+    await w.services.programs.setHandbook(w.identity(alex), programId, (await w.upload("handbook.pdf", "%PDF")).tempPath);
     const handbook = join(w.filesDir, "handbooks", `${programId}.pdf`);
 
-    await expect(w.services.programs.remove(lena, programId)).rejects.toMatchObject({ code: "not_manager" });
-    await w.services.programs.remove(alex, programId);
+    await expect(w.services.programs.remove(w.identity(lena), programId)).rejects.toMatchObject({ code: "not_manager" });
+    await w.services.programs.remove(w.identity(alex), programId);
 
     expect((await w.services.programs.list(alex)).some((p) => p.id === programId)).toBe(false);
     expect(await w.services.programs.modules(programId)).toEqual([]);

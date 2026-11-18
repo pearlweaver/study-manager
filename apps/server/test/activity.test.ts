@@ -133,7 +133,7 @@ describe("the profile", () => {
   it("shows people only to those who share a subject with them", async () => {
     const { alex, lena } = await shared();
     const tom = await w.user("Tom");
-    expect((await w.services.users.people(lena)).map((p) => p.id).sort()).toEqual([alex, lena].sort());
-    expect((await w.services.users.people(tom)).map((p) => p.id)).toEqual([tom]);
+    expect((await w.services.users.people(w.identity(lena))).map((p) => p.id).sort()).toEqual([alex, lena].sort());
+    expect((await w.services.users.people(w.identity(tom))).map((p) => p.id)).toEqual([tom]);
   });
 });

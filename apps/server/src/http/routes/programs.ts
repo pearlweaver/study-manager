@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import type { Services } from "../../services.ts";
 import { who } from "../app.ts";
-import { receiveUploads } from "../uploads.ts";
+import { receiveUploads, removeUploads } from "../uploads.ts";
 import { AppError } from "../../domain/errors.ts";
 
 export const programRoutes =
@@ -39,10 +39,15 @@ export const programRoutes =
     });
     app.post<{ Params: { id: string } }>("/api/programs/:id/handbook", async (request) => {
       const identity = who(request);
-      const [upload] = await receiveUploads(request, services.filesDir);
-      if (!upload) throw new AppError(400, "no_file");
-      if (!/\.pdf$/i.test(upload.name)) throw new AppError(400, "handbook_not_pdf");
-      await p.setHandbook(identity.userId, request.params.id, upload.tempPath);
-      return { ok: true };
+      const uploads = await receiveUploads(request, services.filesDir);
+      try {
+        const upload = uploads[0];
+        if (!upload) throw new AppError(400, "no_file");
+        if (!/\.pdf$/i.test(upload.name)) throw new AppError(400, "handbook_not_pdf");
+        await p.setHandbook(identity.userId, request.params.id, upload.tempPath);
+        return { ok: true };
+      } finally {
+        await removeUploads(uploads);
+      }
     });
   };

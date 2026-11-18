@@ -1,5 +1,4 @@
 import { createReadStream } from "node:fs";
-import { rm } from "node:fs/promises";
 import type { FastifyPluginAsync } from "fastify";
 import { LOCALES } from "@study/shared";
 import { z } from "zod";
@@ -7,7 +6,7 @@ import { recentlyAuthenticated, strongEnoughForAdmin } from "../../auth/identity
 import { AppError } from "../../domain/errors.ts";
 import type { Services } from "../../services.ts";
 import { who } from "../app.ts";
-import { receiveUploads } from "../uploads.ts";
+import { receiveUploads, removeUploads } from "../uploads.ts";
 import { MAIL_KINDS, type MailKind, mailPage } from "../mails.ts";
 
 export const meRoutes =
@@ -65,11 +64,15 @@ export const meRoutes =
 
     app.put("/api/me/avatar", async (request) => {
       const identity = who(request);
-      const [upload, ...rest] = await receiveUploads(request, services.filesDir);
-      if (!upload) throw new AppError(400, "no_file");
-      for (const extra of rest) await rm(extra.tempPath, { force: true });
-      await services.users.setAvatar(identity.userId, upload);
-      return { ok: true };
+      const uploads = await receiveUploads(request, services.filesDir);
+      try {
+        const upload = uploads[0];
+        if (!upload) throw new AppError(400, "no_file");
+        await services.users.setAvatar(identity.userId, upload);
+        return { ok: true };
+      } finally {
+        await removeUploads(uploads);
+      }
     });
 
     app.delete("/api/me/avatar", async (request) => {

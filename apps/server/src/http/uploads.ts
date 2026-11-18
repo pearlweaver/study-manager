@@ -10,14 +10,21 @@ import type { FastifyRequest } from "fastify";
 import type { Upload } from "../domain/files.ts";
 import { AppError } from "../domain/errors.ts";
 
+/** Removes temporary upload bytes. Safe to call after a successful rename. */
+export async function removeUploads(uploads: Upload[]): Promise<void> {
+  await Promise.all(uploads.map((upload) => rm(upload.tempPath, { force: true })));
+}
+
 export async function receiveUploads(request: FastifyRequest, filesDir: string): Promise<Upload[]> {
   if (!request.isMultipart()) throw new AppError(400, "not_multipart");
   const tempDir = join(filesDir, ".tmp");
   await mkdir(tempDir, { recursive: true });
   const uploads: Upload[] = [];
+  let inFlight: string | null = null;
   try {
     for await (const part of request.files()) {
       const tempPath = join(tempDir, randomUUID());
+      inFlight = tempPath;
       const hash = createHash("sha256");
       let size = 0;
       const counter = new Transform({
@@ -33,9 +40,11 @@ export async function receiveUploads(request: FastifyRequest, filesDir: string):
         throw new AppError(413, "file_too_large");
       }
       uploads.push({ tempPath, name: part.filename, size, mime: part.mimetype || "application/octet-stream", sha256: hash.digest("hex") });
+      inFlight = null;
     }
   } catch (error) {
-    await Promise.all(uploads.map((u) => rm(u.tempPath, { force: true })));
+    if (inFlight) await rm(inFlight, { force: true });
+    await removeUploads(uploads);
     throw error;
   }
   return uploads;

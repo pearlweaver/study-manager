@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import type { Services } from "../../services.ts";
 import { who } from "../app.ts";
-import { receiveUploads } from "../uploads.ts";
+import { receiveUploads, removeUploads } from "../uploads.ts";
 import { AppError } from "../../domain/errors.ts";
 
 export const fileRoutes =
@@ -17,14 +17,18 @@ export const fileRoutes =
     app.post<WithId & { Querystring: { folder?: string } }>("/api/courses/:id/files", async (request) => {
       const identity = who(request);
       const uploads = await receiveUploads(request, services.filesDir);
-      if (uploads.length === 0) throw new AppError(400, "no_file");
-      const saved = [];
-      for (const upload of uploads) {
-        const file = await f.upload(identity.userId, request.params.id, request.query.folder ?? "skripte", upload);
-        services.indexLater(file.id);
-        saved.push(file);
+      try {
+        if (uploads.length === 0) throw new AppError(400, "no_file");
+        const saved = [];
+        for (const upload of uploads) {
+          const file = await f.upload(identity.userId, request.params.id, request.query.folder ?? "skripte", upload);
+          services.indexLater(file.id);
+          saved.push(file);
+        }
+        return saved;
+      } finally {
+        await removeUploads(uploads);
       }
-      return saved;
     });
 
     /** The content, with byte ranges so that PDFs open before they are fully loaded. */

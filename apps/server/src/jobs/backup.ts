@@ -6,7 +6,8 @@
 //   openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE -in db-….dump.enc | pg_restore -d …
 //   openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_PASSPHRASE -in files-….tar.gz.enc | tar xz -C …
 import { spawn } from "node:child_process";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { mkdir, readdir, rename, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 export const KEEP_DAYS = 30;
@@ -36,23 +37,29 @@ export async function runBackup(now = new Date()): Promise<BackupResult> {
   if (!passphrase) throw new Error("BACKUP_PASSPHRASE is not set");
   const dir = backupDir();
   await mkdir(dir, { recursive: true });
-  const stamp = now.toISOString().replace(/[:T]/g, "-").slice(0, 16);
+  const stamp = `${now.toISOString().replace(/[:T]/g, "-").slice(0, 19)}-${randomBytes(6).toString("hex")}`;
   const database = join(dir, `db-${stamp}.dump.enc`);
   const archive = join(dir, `files-${stamp}.tar.gz.enc`);
   const encrypt = (target: string) => `openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:BACKUP_PASSPHRASE -out '${target}'`;
   const env = { BACKUP_PASSPHRASE: passphrase };
+  // Write to a private temp file and move it into place only when complete,
+  // so a failed run can never truncate or delete another run's backup.
+  const save = async (command: (out: string) => string, target: string) => {
+    const temp = `${target}.${randomBytes(4).toString("hex")}.tmp`;
+    try {
+      await run(command(temp), env);
+      await rename(temp, target);
+    } catch (error) {
+      await rm(temp, { force: true });
+      throw error;
+    }
+  };
 
-  await run(`pg_dump --format=custom --no-owner "$DATABASE_URL" | ${encrypt(database)}`, env).catch(async (error) => {
-    await rm(database, { force: true });
-    throw error;
-  });
+  await save((out) => `pg_dump --format=custom --no-owner "$DATABASE_URL" | ${encrypt(out)}`, database);
   const filesDir = process.env.FILES_DIR ?? "/data/files";
   // A new installation has no folder yet; an empty archive is a good backup, a failing nightly job is not.
   await mkdir(filesDir, { recursive: true });
-  await run(`tar czf - --exclude=.tmp -C '${filesDir}' . | ${encrypt(archive)}`, env).catch(async (error) => {
-    await rm(archive, { force: true });
-    throw error;
-  });
+  await save((out) => `tar czf - --exclude=.tmp -C '${filesDir}' . | ${encrypt(out)}`, archive);
 
   let removed = 0;
   const limit = now.getTime() - KEEP_DAYS * 86_400_000;

@@ -168,12 +168,17 @@ export function programsOf(db: Db, filesDir: string) {
 
     /** Keeps the uploaded handbook PDF with its programme. */
     async setHandbook(identity: Identity, programId: string, uploaded: string) {
-      await mayManage(identity, programId);
+      const program = await mayManage(identity, programId);
       const relative = join("handbooks", `${programId}.pdf`);
       const target = join(filesDir, relative);
       await mkdir(dirname(target), { recursive: true });
-      await rename(uploaded, target);
       await db.update(programs).set({ handbookPath: relative }).where(eq(programs.id, programId));
+      try {
+        await rename(uploaded, target);
+      } catch (error) {
+        await db.update(programs).set({ handbookPath: program.handbookPath }).where(eq(programs.id, programId));
+        throw error;
+      }
     },
 
     async handbookText(programId: string, from: number, to?: number) {

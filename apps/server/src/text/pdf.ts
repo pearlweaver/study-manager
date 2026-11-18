@@ -12,23 +12,26 @@ export async function pdfPages(path: string): Promise<string[]> {
   const data = new Uint8Array(await readFile(path));
   const document = await getDocument({ data, useSystemFonts: true }).promise;
   const pages: string[] = [];
-  for (let number = 1; number <= document.numPages; number++) {
-    const page = await document.getPage(number);
-    const content = await page.getTextContent();
-    let text = "";
-    let lastY: number | null = null;
-    for (const item of content.items) {
-      if (!("str" in item)) continue;
-      const y = item.transform[5] as number;
-      if (lastY !== null && Math.abs(y - lastY) > 2) text += "\n";
-      text += item.str;
-      if (item.hasEOL) text += "\n";
-      lastY = y;
+  try {
+    for (let number = 1; number <= document.numPages; number++) {
+      const page = await document.getPage(number);
+      const content = await page.getTextContent();
+      let text = "";
+      let lastY: number | null = null;
+      for (const item of content.items) {
+        if (!("str" in item)) continue;
+        const y = item.transform[5] as number;
+        if (lastY !== null && Math.abs(y - lastY) > 2) text += "\n";
+        text += item.str;
+        if (item.hasEOL) text += "\n";
+        lastY = y;
+      }
+      pages.push(text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim());
+      page.cleanup();
     }
-    pages.push(text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim());
-    page.cleanup();
+  } finally {
+    await document.destroy();
   }
-  await document.destroy();
   if (cache.size > 50) cache.clear();
   cache.set(path, { mtime: mtimeMs, pages });
   return pages;

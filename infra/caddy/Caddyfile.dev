@@ -35,7 +35,3 @@ http://{$DOMAIN} {
 		reverse_proxy web:5173
 	}
 }
-
-http://{$DOMAIN} {
-	redir https://{host}{uri}
-}

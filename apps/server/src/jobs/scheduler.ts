@@ -47,7 +47,7 @@ export async function startScheduler(databaseUrl: string, services: Services, lo
     log.info({ pruned }, "old activity pruned");
   });
   // Once right after start, so that a fresh server has its calendars and index.
-  await boss.send("feeds-refresh", {});
-  await boss.send("index-missing", {});
+  await boss.send("feeds-refresh", {}, { singletonKey: "startup-feeds" });
+  await boss.send("index-missing", {}, { singletonKey: "startup-index" });
   return boss;
 }
